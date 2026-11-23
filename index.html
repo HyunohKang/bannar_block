@@ -465,6 +465,13 @@ function processHtml(raw, pageUrl) {
       const a = doc.createElement('a'); a.href = embedToWatch(src); a.setAttribute('data-bb-external', '1');
       a.textContent = '▶ 외부 플레이어 임베드 (' + hostOf(src).replace(/^www\./, '') + ') — 원본에서 열기';
       ph.appendChild(a); n.replaceWith(ph);
+    } else if (src && n.tagName === 'IFRAME' && !isAdHost(src) && !/\/(ads?|adserver|banner|sponsor|pixel|track(ing)?)([\/.?_-]|$)/i.test(new URL(src).pathname) &&
+               !((n.hasAttribute('width') && +n.getAttribute('width') <= 5) || (n.hasAttribute('height') && +n.getAttribute('height') <= 5))) {
+      // 다른 주소에서 불러오는 플레이어 페이지(iframe): 스크립트 없이는 재생되지 않으므로, 앱 안에서 그 페이지를 직접 열어 영상을 찾게 한다
+      const ph = doc.createElement('div'); ph.className = 'bb-embed';
+      const a = doc.createElement('a'); a.href = src;
+      a.textContent = '▶ 임베드된 플레이어 열기 (' + hostOf(src).replace(/^www\./, '') + ') — 앱에서 열어 영상 찾기';
+      ph.appendChild(a); n.replaceWith(ph);
     } else n.remove();
   });
 
@@ -887,7 +894,7 @@ function renderSide() {
   renderStats();
   let html = vs.map(cardHtml).join('');
   if (!vs.length) {
-    html = `<div class="empty"><b>동영상을 찾지 못했습니다</b><br><span style="font-size:13px">자바스크립트로 나중에 불러오는 영상은 이 방식으로 감지되지 않습니다. 영상의 실제 주소(.mp4 / .m3u8)를 알고 있다면 아래에서 직접 추가하세요.</span></div>`;
+    html = `<div class="empty"><b>동영상을 찾지 못했습니다</b><br><span style="font-size:13px">플레이어가 계속 로딩만 도는 것은 이 앱이 스크립트를 실행하지 않기 때문입니다. 페이지에 "임베드된 플레이어 열기" 링크가 보이면 눌러서 그 페이지를 열어 보세요. 자바스크립트로 나중에 불러오는 영상은 감지되지 않으며, 영상의 실제 주소(.mp4 / .m3u8)를 알고 있다면 아래에서 직접 추가할 수 있습니다.</span></div>`;
   }
   if (state.blobVideo) html += '<div class="note">이 페이지의 플레이어는 blob 스트리밍(MSE) 방식이라 실제 파일 주소를 알아낼 수 없습니다.</div>';
   $('#vlist').innerHTML = html;
