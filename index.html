@@ -101,7 +101,7 @@ details.notes li{margin:4px 0}
 .vcard.wide{grid-column:1/-1}
 .linksbox{margin:0 12px 14px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg)}
 .linksbox summary{cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px}
-#linkList{display:grid;gap:4px;max-height:50vh;overflow:auto}
+#linkList,#candList{display:grid;gap:4px;max-height:50vh;overflow:auto}
 .linkitem{text-align:left;border:0;background:transparent;border-radius:8px;padding:8px;min-width:0}
 .linkitem:hover{background:var(--surface2)}
 .linkitem b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -235,6 +235,11 @@ dialog::backdrop{background:rgba(5,10,15,.55)}
       <div class="stats" id="stats"></div>
     </div>
     <div id="vlist"></div>
+    <details id="candBox" class="linksbox" hidden>
+      <summary>플레이어 후보 주소 <span class="count" id="candCount">0</span></summary>
+      <div class="vstat" style="margin:6px 0">페이지 소스에서 찾은 플레이어·임베드 주소입니다. 눌러서 앱에서 열면 그 안의 영상을 찾습니다.</div>
+      <div id="candList"></div>
+    </details>
     <details id="linksBox" class="linksbox" hidden>
       <summary>이 페이지의 링크 <span class="count" id="linkCount">0</span></summary>
       <input class="urlin" id="linkFilter" type="search" placeholder="링크 검색" aria-label="링크 검색" style="width:100%;height:34px;margin:8px 0">
@@ -275,6 +280,7 @@ dialog::backdrop{background:rgba(5,10,15,.55)}
       <input class="urlin" id="optProxy" type="text" spellcheck="false" placeholder="https://my-proxy.example.com/?url={url}" style="width:100%">
       <div class="hint"><code>{url}</code> 자리에 주소(인코딩됨)가 들어갑니다. 설정하면 가장 먼저 사용됩니다.</div>
     </div>
+    <div class="hint" style="margin-top:-8px">앱 버전: <b id="ver"></b> (배포 후 이 값이 바뀌지 않으면 캐시된 이전 버전입니다 — 새로고침/시크릿 창으로 확인)</div>
     <div class="row" style="margin:0">
       <button class="btn danger sm" id="clearHist" type="button">방문 기록 지우기</button>
       <button class="btn primary sm" id="settingsSave" type="button" style="margin-left:auto">저장</button>
@@ -451,6 +457,24 @@ function processHtml(raw, pageUrl) {
   let m, guard = 0;
   while ((m = re.exec(norm)) && guard++ < 400) addVideo(m[0].startsWith('//') ? 'https:' + m[0] : m[0], '페이지 소스');
 
+  /* ---- 1b. 진단 + 플레이어 후보 주소 (스크립트에 숨은 iframe/플레이어 페이지 주소) ---- */
+  const diag = {
+    iframe: doc.querySelectorAll('iframe').length, video: doc.querySelectorAll('video').length,
+    libs: [...new Set((raw.match(/jwplayer|video\.js|videojs|plyr|hls\.js|flowplayer|clappr|dplayer|artplayer|shaka-player|mediaelement|jwplatform|brightcove/gi) || []).map(s => s.toLowerCase()))].slice(0, 6)
+  };
+  const candidates = [], seenC = new Set();
+  const NOISE_RE = /w3\.org|schema\.org|ogp\.me|xmlns|fonts\.(googleapis|gstatic)|gstatic\.com|cdnjs\.|jsdelivr|unpkg\.com|jquery|bootstrap|sharer|share\.php|\/intent\/|kakao\.com\/share|naver\.com\/share|apple\.com|play\.google|\.(js|css|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|eot|map|json|xml|txt|php)(\?|#|$)/i;
+  const addCand = (u, why, needKey) => {
+    const a = abs(u); if (!a || candidates.length >= 30) return;
+    const k = a.split('#')[0];
+    if (k === pageUrl.split('#')[0] || seenC.has(k) || isAdHost(a) || isVideoUrl(a)) return;
+    if (needKey && (NOISE_RE.test(a) || !/(embed|player|stream|\/vod|video|watch|iframe|\/v\/)/i.test(a))) return;
+    seenC.add(k); candidates.push({ url: a, why });
+  };
+  doc.querySelectorAll('iframe').forEach(n => addCand(n.getAttribute('src') || n.getAttribute('data-src') || n.getAttribute('data-lazy-src'), 'iframe', false));
+  const URL_RE = /https?:\/\/[^\s"'<>\\()\[\]{}|^`]+/gi; let cm, cg = 0;
+  while ((cm = URL_RE.exec(norm)) && cg++ < 4000) addCand(cm[0].replace(/[,;.]+$/, ''), '페이지 소스', true);
+
   /* ---- 2. 제거 ---- */
   doc.querySelectorAll('link[rel~="preload"][as="style"]').forEach(l => { if (!isAdHost(abs(l.getAttribute('href')) || '')) l.setAttribute('rel', 'stylesheet'); });
   doc.querySelectorAll('script').forEach(n => { n.remove(); stats.script++; });
@@ -553,7 +577,7 @@ img[data-src],img.lazyload,img.lazy,img.lozad,.lazyload,.lazy,.lozad{opacity:1!i
 
   const order = { file: 0, hls: 1, dash: 2, embed: 3 };
   const videos = [...found.values()].sort((a, b) => order[a.type] - order[b.type]).map((v, i) => ({ ...v, id: 'v' + i }));
-  return { html: '<!doctype html>' + doc.documentElement.outerHTML, videos, stats, title, base, blobVideo, links };
+  return { html: '<!doctype html>' + doc.documentElement.outerHTML, videos, stats, title, base, blobVideo, links, candidates, diag };
 }
 
 /* =====================================================================
@@ -692,7 +716,7 @@ async function openTarget(input, opts = {}) {
     await sleep(0);
     const out = processHtml(r.text, url);
     if (ctrl.signal.aborted) return;
-    Object.assign(state, { url, title: out.title, videos: out.videos, stats: out.stats, base: out.base, blobVideo: out.blobVideo, links: out.links });
+    Object.assign(state, { url, title: out.title, videos: out.videos, stats: out.stats, base: out.base, blobVideo: out.blobVideo, links: out.links, cands: out.candidates, diag: out.diag });
     commitHistory(url, opts);
     setView('viewer'); setTab('page');
     renderSide(); renderFrame(out.html);
@@ -724,7 +748,7 @@ function showError(url, e) {
 function showDirect(url, opts) {
   const type = classify(url);
   const entry = { id: 'v0', url, type, source: '직접 입력', poster: '' };
-  Object.assign(state, { url, title: decodeURIComponent((new URL(url).pathname.split('/').pop() || hostOf(url))), videos: [entry], stats: { script: 0, frame: 0, ad: 0, tracker: 0 }, base: url, blobVideo: false, links: [] });
+  Object.assign(state, { url, title: decodeURIComponent((new URL(url).pathname.split('/').pop() || hostOf(url))), videos: [entry], stats: { script: 0, frame: 0, ad: 0, tracker: 0 }, base: url, blobVideo: false, links: [], cands: [], diag: null });
   commitHistory(url, opts);
   setView('viewer'); setTab('videos');
   renderSide();
@@ -894,13 +918,17 @@ function renderSide() {
   renderStats();
   let html = vs.map(cardHtml).join('');
   if (!vs.length) {
-    html = `<div class="empty"><b>동영상을 찾지 못했습니다</b><br><span style="font-size:13px">플레이어가 계속 로딩만 도는 것은 이 앱이 스크립트를 실행하지 않기 때문입니다. 페이지에 "임베드된 플레이어 열기" 링크가 보이면 눌러서 그 페이지를 열어 보세요. 자바스크립트로 나중에 불러오는 영상은 감지되지 않으며, 영상의 실제 주소(.mp4 / .m3u8)를 알고 있다면 아래에서 직접 추가할 수 있습니다.</span></div>`;
+    html = `<div class="empty"><b>동영상을 찾지 못했습니다</b><br><span style="font-size:13px">플레이어가 계속 로딩만 도는 것은 이 앱이 스크립트를 실행하지 않기 때문입니다. 페이지에 "임베드된 플레이어 열기" 링크가 보이면 눌러서 그 페이지를 열어 보세요. 자바스크립트로 나중에 불러오는 영상은 감지되지 않으며, 영상의 실제 주소(.mp4 / .m3u8)를 알고 있다면 아래에서 직접 추가할 수 있습니다.</span>${state.diag ? `<div class="vstat" style="margin-top:8px">진단: iframe ${state.diag.iframe}개 · &lt;video&gt; ${state.diag.video}개${state.diag.libs.length ? ' · 감지된 플레이어 스크립트: ' + esc(state.diag.libs.join(', ')) : ''}</div>` : ''}</div>`;
   }
   if (state.blobVideo) html += '<div class="note">이 페이지의 플레이어는 blob 스트리밍(MSE) 방식이라 실제 파일 주소를 알아낼 수 없습니다.</div>';
   $('#vlist').innerHTML = html;
   $$('#vlist .vthumb img').forEach(i => i.addEventListener('error', () => i.remove()));
   $('#linkFilter').value = '';
   renderLinks();
+  const cands = state.cands || [], cb = $('#candBox');
+  cb.hidden = !cands.length; cb.open = !state.videos.some(v => v.type === 'file' || v.type === 'hls');
+  $('#candCount').textContent = cands.length;
+  $('#candList').innerHTML = cands.map(c => `<button type="button" class="linkitem" data-href="${esc(c.url)}"><b>${esc(shortUrl(c.url))}</b><small>${esc(c.why)}</small></button>`).join('');
 }
 function renderLinks() {
   const all = state.links || [], box = $('#linksBox');
@@ -1085,6 +1113,7 @@ $('#addForm').addEventListener('submit', e => {
   $('#addUrl').value = ''; renderSide(); focusCard(state.videos[state.videos.length - 1].id);
 });
 
+$('#candList').addEventListener('click', e => { const b = e.target.closest('[data-href]'); if (b) openTarget(b.dataset.href); });
 $('#linkFilter').addEventListener('input', renderLinks);
 $('#linkList').addEventListener('click', e => { const b = e.target.closest('[data-href]'); if (b) openTarget(b.dataset.href); });
 initLinksBox();
@@ -1132,6 +1161,8 @@ $('#settingsSave').addEventListener('click', () => {
 $('#clearHist').addEventListener('click', () => { store.set('bb.recent', []); renderRecent(); toast('방문 기록을 지웠습니다'); });
 
 /* 시작 */
+const BUILD = '2026-11-23.4';
+$('#ver').textContent = BUILD; console.info('BannerBlock build', BUILD);
 const initial = new URLSearchParams(location.search).get('url') || (/^#https?:/i.test(location.hash) ? decodeURIComponent(location.hash.slice(1)) : '');
 setView('home'); updateNav();
 if (initial) openTarget(initial);
