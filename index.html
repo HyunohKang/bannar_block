@@ -99,6 +99,13 @@ details.notes li{margin:4px 0}
 .vstat.ok{color:var(--accent)}
 .vact{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .vcard.wide{grid-column:1/-1}
+.linksbox{margin:0 12px 14px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg)}
+.linksbox summary{cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px}
+#linkList{display:grid;gap:4px;max-height:50vh;overflow:auto}
+.linkitem{text-align:left;border:0;background:transparent;border-radius:8px;padding:8px;min-width:0}
+.linkitem:hover{background:var(--surface2)}
+.linkitem b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.linkitem small{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .addbox{padding:0 12px 16px;margin-top:auto}
 .addbox label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
 .addrow{display:flex;gap:6px}
@@ -215,7 +222,7 @@ dialog::backdrop{background:rgba(5,10,15,.55)}
 <!-- 뷰어 -->
 <div class="tabs" id="tabs" role="tablist" hidden>
   <button type="button" role="tab" data-tab="page" aria-selected="true">페이지</button>
-  <button type="button" role="tab" data-tab="videos" aria-selected="false">동영상 <span class="count" id="tabCount">0</span></button>
+  <button type="button" role="tab" data-tab="videos" aria-selected="false">동영상·링크 <span class="count" id="tabCount">0</span></button>
 </div>
 <div id="viewer" data-tab="page" hidden>
   <div class="framewrap">
@@ -228,6 +235,11 @@ dialog::backdrop{background:rgba(5,10,15,.55)}
       <div class="stats" id="stats"></div>
     </div>
     <div id="vlist"></div>
+    <details id="linksBox" class="linksbox" hidden>
+      <summary>이 페이지의 링크 <span class="count" id="linkCount">0</span></summary>
+      <input class="urlin" id="linkFilter" type="search" placeholder="링크 검색" aria-label="링크 검색" style="width:100%;height:34px;margin:8px 0">
+      <div id="linkList"></div>
+    </details>
     <div class="addbox">
       <label for="addUrl">동영상 주소 직접 추가</label>
       <form class="addrow" id="addForm" autocomplete="off">
@@ -521,9 +533,20 @@ img[data-src],img.lazyload,img.lazy,img.lozad,.lazyload,.lazy,.lozad{opacity:1!i
   doc.head.insertAdjacentHTML('afterbegin',
     `<meta http-equiv="Content-Security-Policy" content="${esc(csp)}"><meta name="referrer" content="no-referrer"><base href="${esc(base)}" target="_blank"><style id="bb-style">${css}</style>`);
 
+  /* ---- 5. 페이지 링크 목록 (모바일에서 JS 메뉴가 죽어도 이동할 수 있게) ---- */
+  const links = [], seenLinks = new Set(), basePlain = base.split('#')[0];
+  doc.querySelectorAll('a[href]').forEach(a => {
+    if (links.length >= 400 || a.hasAttribute('data-bb-external')) return;
+    const u = abs(a.getAttribute('href')); if (!u) return;
+    if (u.split('#')[0] === basePlain || seenLinks.has(u)) return;
+    seenLinks.add(u);
+    const text = (a.textContent || a.getAttribute('title') || a.querySelector('img')?.getAttribute('alt') || '').replace(/\s+/g, ' ').trim().slice(0, 90);
+    links.push({ url: u, text: text || shortUrl(u) });
+  });
+
   const order = { file: 0, hls: 1, dash: 2, embed: 3 };
   const videos = [...found.values()].sort((a, b) => order[a.type] - order[b.type]).map((v, i) => ({ ...v, id: 'v' + i }));
-  return { html: '<!doctype html>' + doc.documentElement.outerHTML, videos, stats, title, base, blobVideo };
+  return { html: '<!doctype html>' + doc.documentElement.outerHTML, videos, stats, title, base, blobVideo, links };
 }
 
 /* =====================================================================
@@ -662,7 +685,7 @@ async function openTarget(input, opts = {}) {
     await sleep(0);
     const out = processHtml(r.text, url);
     if (ctrl.signal.aborted) return;
-    Object.assign(state, { url, title: out.title, videos: out.videos, stats: out.stats, base: out.base, blobVideo: out.blobVideo });
+    Object.assign(state, { url, title: out.title, videos: out.videos, stats: out.stats, base: out.base, blobVideo: out.blobVideo, links: out.links });
     commitHistory(url, opts);
     setView('viewer'); setTab('page');
     renderSide(); renderFrame(out.html);
@@ -694,7 +717,7 @@ function showError(url, e) {
 function showDirect(url, opts) {
   const type = classify(url);
   const entry = { id: 'v0', url, type, source: '직접 입력', poster: '' };
-  Object.assign(state, { url, title: decodeURIComponent((new URL(url).pathname.split('/').pop() || hostOf(url))), videos: [entry], stats: { script: 0, frame: 0, ad: 0, tracker: 0 }, base: url, blobVideo: false });
+  Object.assign(state, { url, title: decodeURIComponent((new URL(url).pathname.split('/').pop() || hostOf(url))), videos: [entry], stats: { script: 0, frame: 0, ad: 0, tracker: 0 }, base: url, blobVideo: false, links: [] });
   commitHistory(url, opts);
   setView('viewer'); setTab('videos');
   renderSide();
@@ -719,12 +742,16 @@ function afterFrameLoad(frame, simple) {
 
   // 고정 오버레이/하단 바 제거
   const vw = win.innerWidth, vh = win.innerHeight; let hidden = 0;
+  const pageHost = hostOf(state.base);
   doc.body.querySelectorAll('*').forEach(el => {
     if (el.closest('#bb-layer')) return;
     const cs = win.getComputedStyle(el);
     if (cs.position !== 'fixed') return;
     if (el.tagName === 'VIDEO' || el.querySelector('video,main,article') || (el.textContent || '').length > 1500) return;
     if (/^(HEADER|NAV)$/.test(el.tagName) || el.querySelector('nav')) return;
+    // 모바일 하단 탭/메뉴처럼 같은 사이트 링크가 여러 개 들어 있는 고정 요소는 '내비게이션'으로 보고 남긴다
+    const internal = [...el.querySelectorAll('a[href]')].filter(a => hostOf(a.href) === pageHost).length;
+    if (internal >= 2) return;
     const r = el.getBoundingClientRect();
     const big = r.width * r.height >= vw * vh * 0.25;
     const bottomBar = r.width >= vw * 0.6 && r.height <= 220 && r.bottom >= vh - 4;
@@ -865,6 +892,23 @@ function renderSide() {
   if (state.blobVideo) html += '<div class="note">이 페이지의 플레이어는 blob 스트리밍(MSE) 방식이라 실제 파일 주소를 알아낼 수 없습니다.</div>';
   $('#vlist').innerHTML = html;
   $$('#vlist .vthumb img').forEach(i => i.addEventListener('error', () => i.remove()));
+  $('#linkFilter').value = '';
+  renderLinks();
+}
+function renderLinks() {
+  const all = state.links || [], box = $('#linksBox');
+  box.hidden = !all.length;
+  if (!all.length) return;
+  const q = $('#linkFilter').value.trim().toLowerCase();
+  const list = q ? all.filter(l => l.text.toLowerCase().includes(q) || l.url.toLowerCase().includes(q)) : all;
+  $('#linkCount').textContent = all.length;
+  $('#linkList').innerHTML = list.length
+    ? list.slice(0, 200).map(l => `<button type="button" class="linkitem" data-href="${esc(l.url)}"><b>${esc(l.text)}</b><small>${esc(shortUrl(l.url))}</small></button>`).join('')
+    : '<div class="empty" style="padding:12px">일치하는 링크가 없습니다</div>';
+}
+function initLinksBox() {
+  const box = $('#linksBox');
+  if (!box.dataset.init) { box.dataset.init = '1'; box.open = matchMedia('(max-width:900px)').matches; }
 }
 function focusCard(id) {
   if (matchMedia('(max-width:900px)').matches) setTab('videos');
@@ -1034,6 +1078,9 @@ $('#addForm').addEventListener('submit', e => {
   $('#addUrl').value = ''; renderSide(); focusCard(state.videos[state.videos.length - 1].id);
 });
 
+$('#linkFilter').addEventListener('input', renderLinks);
+$('#linkList').addEventListener('click', e => { const b = e.target.closest('[data-href]'); if (b) openTarget(b.dataset.href); });
+initLinksBox();
 $('#vlist').addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const id = b.closest('.vcard').dataset.id; const v = state.videos.find(x => x.id === id); if (!v) return;
