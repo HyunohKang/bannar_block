@@ -1,0 +1,1087 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>BannerBlock — 광고 차단 뷰어 & 동영상 다운로더</title>
+<style>
+:root{
+  --bg:#f4f6f8; --surface:#ffffff; --surface2:#eef1f4; --fg:#14181f; --muted:#5a6573; --line:#dfe3e8;
+  --accent:#0f766e; --accent-fg:#ffffff; --accent-soft:#d9f1ee; --danger:#b42318; --danger-soft:#fde7e4; --warn-soft:#fff3d6;
+  --shadow:0 8px 30px rgba(15,23,42,.14); --bar:56px; --tabs:0px;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#0f1318; --surface:#171c23; --surface2:#1f262f; --fg:#e8ecf1; --muted:#9aa6b4; --line:#2a323d;
+    --accent:#2dd4bf; --accent-fg:#052321; --accent-soft:#12312e; --danger:#ff8a7a; --danger-soft:#3a1d1a; --warn-soft:#3a2f12; --shadow:0 8px 30px rgba(0,0,0,.5); }
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;-webkit-text-size-adjust:100%}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* ---------- top bar ---------- */
+.topbar{position:sticky;top:0;z-index:30;height:var(--bar);display:flex;align-items:center;gap:8px;padding:0 max(12px,env(safe-area-inset-left));background:var(--surface);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:-.02em;white-space:nowrap;cursor:pointer;background:none;border:0;padding:4px 6px 4px 0}
+.brand svg{width:24px;height:24px;color:var(--accent)}
+.icon-btn{width:36px;height:36px;display:grid;place-items:center;border-radius:10px;border:1px solid transparent;background:transparent}
+.icon-btn:hover:not(:disabled){background:var(--surface2)}
+.icon-btn:disabled{opacity:.35;cursor:default}
+.icon-btn svg{width:18px;height:18px}
+.urlform{flex:1;display:flex;gap:8px;min-width:0}
+.urlin{flex:1;min-width:0;height:38px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+.urlin::placeholder{color:var(--muted)}
+.btn{height:38px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-weight:600;white-space:nowrap}
+.btn:hover{background:var(--surface2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.sm{height:30px;padding:0 11px;font-size:13px;border-radius:8px}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+
+/* ---------- home ---------- */
+#home{max-width:760px;margin:0 auto;padding:clamp(28px,8vh,88px) 20px 60px}
+#home h1{font-size:clamp(26px,5vw,38px);line-height:1.15;letter-spacing:-.03em;margin:0 0 10px}
+#home .lead{color:var(--muted);font-size:16px;margin:0 0 26px}
+.hero-form{display:flex;gap:8px}
+.hero-form .urlin{height:50px;font-size:16px;border-radius:12px;background:var(--surface)}
+.hero-form .btn{height:50px;border-radius:12px;padding:0 24px;font-size:15px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 12px;font-size:13px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip:hover{border-color:var(--accent)}
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:36px 0 0}
+.feature{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.feature b{display:block;margin-bottom:3px}
+.feature span{color:var(--muted);font-size:13px}
+details.notes{margin-top:26px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+details.notes summary{cursor:pointer;font-weight:600}
+details.notes ul{margin:10px 0 2px;padding-left:20px;color:var(--muted)}
+details.notes li{margin:4px 0}
+
+/* ---------- viewer ---------- */
+#viewer{display:grid;grid-template-columns:minmax(0,1fr) 390px;height:calc(100dvh - var(--bar) - var(--tabs))}
+.framewrap{position:relative;min-width:0;background:#fff}
+#frame{display:block;width:100%;height:100%;border:0;background:#fff}
+#side{border-left:1px solid var(--line);background:var(--surface);overflow:auto;display:flex;flex-direction:column;min-height:0}
+.side-head{padding:14px 16px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:2}
+.side-head h2{margin:0 0 6px;font-size:15px;display:flex;align-items:center;gap:8px}
+.count{background:var(--accent);color:var(--accent-fg);border-radius:999px;font-size:12px;padding:0 8px;line-height:20px;font-weight:700}
+.title-line{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.stat{font-size:12px;background:var(--accent-soft);color:var(--accent);border-radius:6px;padding:1px 8px;font-weight:600}
+#vlist{padding:12px;display:grid;gap:10px;align-content:start}
+.empty{padding:22px 16px;color:var(--muted);text-align:center;border:1px dashed var(--line);border-radius:12px}
+.note{padding:10px 12px;border-radius:10px;background:var(--warn-soft);font-size:13px}
+.vcard{display:grid;grid-template-columns:84px minmax(0,1fr);gap:12px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.vcard.flash{animation:flash 1.2s ease}
+@keyframes flash{0%,60%{box-shadow:0 0 0 3px var(--accent)}100%{box-shadow:0 0 0 0 transparent}}
+.vthumb{width:84px;height:62px;border-radius:8px;background:var(--surface2);display:grid;place-items:center;overflow:hidden;color:var(--muted)}
+.vthumb img{width:100%;height:100%;object-fit:cover}
+.vthumb svg{width:26px;height:26px}
+.vtop{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.badge{font-size:11px;font-weight:700;border-radius:5px;padding:0 6px;line-height:18px;background:var(--surface2);border:1px solid var(--line)}
+.badge.hls{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.badge.embed,.badge.dash{background:var(--warn-soft);border-color:transparent}
+.vsrc{font-size:11px;color:var(--muted)}
+.vname{font-weight:600;word-break:break-all;line-height:1.3;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.vurl{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vprog{margin-top:8px}
+.bar{height:6px;border-radius:999px;background:var(--surface2);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .15s}
+.bar.indet i{width:35%;animation:slide 1.1s infinite ease-in-out}
+@keyframes slide{0%{margin-left:-35%}100%{margin-left:100%}}
+.vstat{font-size:12px;color:var(--muted);margin-top:4px;word-break:break-word}
+.vstat.err{color:var(--danger)}
+.vstat.ok{color:var(--accent)}
+.vact{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.vcard.wide{grid-column:1/-1}
+.addbox{padding:0 12px 16px;margin-top:auto}
+.addbox label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.addrow{display:flex;gap:6px}
+.addrow .urlin{height:34px;font-size:13px}
+
+/* loading + error */
+#busy{position:fixed;inset:var(--bar) 0 0 0;z-index:25;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(2px);display:grid;place-items:center;text-align:center;padding:20px}
+.spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+#busyUrl{color:var(--muted);font-size:12px;max-width:80vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#error{max-width:640px;margin:0 auto;padding:clamp(24px,8vh,80px) 20px}
+#error .box{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px}
+#error h2{margin:0 0 6px}
+#error ul{margin:8px 0;padding-left:20px;color:var(--muted)}
+#error code{background:var(--surface2);padding:1px 5px;border-radius:5px;word-break:break-all}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+
+/* tabs (mobile) */
+.tabs{display:none}
+@media (max-width:900px){
+  :root{--tabs:44px}
+  .tabs{display:flex;position:sticky;top:var(--bar);z-index:20;height:var(--tabs);background:var(--surface);border-bottom:1px solid var(--line)}
+  .tabs button{flex:1;border:0;background:none;font-weight:600;color:var(--muted);border-bottom:2px solid transparent}
+  .tabs button[aria-selected=true]{color:var(--accent);border-bottom-color:var(--accent)}
+  #viewer{grid-template-columns:minmax(0,1fr)}
+  #viewer[data-tab=page] #side{display:none}
+  #viewer[data-tab=videos] .framewrap{display:none}
+  #side{border-left:0}
+  .brand span{display:none}
+  .btn.go{padding:0 12px}
+}
+@media (max-width:520px){ .hero-form{flex-direction:column} .hero-form .btn{width:100%} #fwd,#openorig{display:none} }
+
+/* dialogs */
+dialog{border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--fg);padding:0;box-shadow:var(--shadow);max-width:min(560px,calc(100vw - 24px));width:100%}
+dialog::backdrop{background:rgba(5,10,15,.55)}
+.dlg-h{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)}
+.dlg-h h2{margin:0;font-size:16px}
+.dlg-b{padding:16px 18px;display:grid;gap:16px}
+.field label.t{display:block;font-weight:600;margin-bottom:4px}
+.field .hint{font-size:12px;color:var(--muted);margin-top:4px}
+.seg{display:flex;gap:8px;flex-wrap:wrap}
+.seg label{flex:1;min-width:140px;border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer}
+.seg label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.seg b{display:block}.seg small{color:var(--muted)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+#pv{max-width:min(960px,calc(100vw - 24px))}
+#pvVideo{display:block;width:100%;max-height:75vh;background:#000;border-radius:0 0 16px 16px}
+
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:.2s;z-index:100;max-width:min(92vw,520px);text-align:center;font-weight:500}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <button class="brand" id="brandBtn" type="button" aria-label="처음 화면으로">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.2 8 8 9 4.8-1 8-4.5 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+    <span>BannerBlock</span>
+  </button>
+  <div id="navbtns" style="display:flex;gap:2px" hidden>
+    <button class="icon-btn" id="back" type="button" title="뒤로" aria-label="뒤로" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+    <button class="icon-btn" id="fwd" type="button" title="앞으로" aria-label="앞으로" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
+    <button class="icon-btn" id="reload" type="button" title="새로고침" aria-label="새로고침"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button>
+  </div>
+  <form class="urlform" id="barForm" autocomplete="off" hidden>
+    <input class="urlin" id="barUrl" type="text" inputmode="url" spellcheck="false" aria-label="웹사이트 주소" placeholder="웹사이트 또는 동영상 주소 입력">
+    <button class="btn primary go" type="submit">이동</button>
+  </form>
+  <button class="icon-btn" id="openorig" type="button" title="원본 사이트를 새 탭에서 열기 (광고 포함)" aria-label="원본 열기" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></button>
+  <button class="icon-btn" id="settingsBtn" type="button" title="설정" aria-label="설정" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
+</header>
+
+<!-- 처음 화면 -->
+<main id="home">
+  <h1>광고 없이 열고,<br>영상은 바로 저장하세요.</h1>
+  <p class="lead">웹사이트 주소를 입력하면 스크립트·광고·팝업·배너를 걷어낸 깨끗한 화면으로 열고, 페이지 안의 동영상과 동영상 링크를 찾아 다운로드할 수 있게 해 줍니다.</p>
+  <form class="hero-form" id="heroForm" autocomplete="off">
+    <input class="urlin" id="heroUrl" type="text" inputmode="url" spellcheck="false" aria-label="웹사이트 주소" placeholder="https://example.com 또는 동영상 파일 주소(.mp4, .m3u8)" autofocus>
+    <button class="btn primary" type="submit">열기</button>
+  </form>
+  <div class="chips" id="recent" aria-label="최근 방문"></div>
+  <div class="features">
+    <div class="feature"><b>🛡 광고·배너 차단</b><span>스크립트를 아예 실행하지 않고, 광고 서버·광고 요소·팝업·고정 오버레이를 제거합니다.</span></div>
+    <div class="feature"><b>🎞 동영상 자동 감지</b><span>video 태그, 메타 태그, 링크, 페이지 소스 속의 mp4 · webm · m3u8 주소를 찾아 목록으로 보여줍니다.</span></div>
+    <div class="feature"><b>⬇ 앱 안에서 다운로드</b><span>진행률 표시, 대용량은 디스크로 직접 저장. HLS(m3u8)는 조각을 이어 붙여 저장합니다.</span></div>
+  </div>
+  <details class="notes">
+    <summary>알아두세요 (동작 방식과 한계)</summary>
+    <ul>
+      <li>이 앱은 서버 없이 브라우저에서만 동작합니다. 사이트 HTML은 CORS 프록시를 거쳐 가져오므로 공개 프록시가 막히면 실패할 수 있습니다. 설정에서 내 프록시를 지정하거나 <code>/api/proxy</code>를 추가하면 안정적입니다.</li>
+      <li>스크립트를 실행하지 않는 방식이라 광고가 원천 차단되는 대신, 자바스크립트로 화면을 그리는 사이트(SPA)나 로그인이 필요한 페이지는 비어 보이거나 제대로 열리지 않을 수 있습니다.</li>
+      <li>YouTube·Netflix 같은 스트리밍 서비스, DRM/암호화된 스트림은 지원하지 않습니다. 임베드 플레이어는 목록에만 표시됩니다.</li>
+      <li>영상 서버가 CORS를 허용하지 않으면 앱 안에서 저장할 수 없습니다. 이때는 새 탭으로 열어 브라우저 메뉴로 저장하세요.</li>
+      <li>저장 권한(저작권·이용약관)이 있는 콘텐츠에만 사용하세요. 책임은 사용자에게 있습니다.</li>
+    </ul>
+  </details>
+</main>
+
+<!-- 오류 화면 -->
+<section id="error" hidden>
+  <div class="box">
+    <h2 id="errTitle">페이지를 열 수 없습니다</h2>
+    <div id="errMsg" style="color:var(--muted)"></div>
+    <ul id="errList"></ul>
+    <div class="row">
+      <button class="btn primary" id="errRetry" type="button">다시 시도</button>
+      <button class="btn" id="errSettings" type="button">프록시 설정</button>
+      <a class="btn" id="errOpen" target="_blank" rel="noopener noreferrer" style="display:inline-grid;place-items:center;text-decoration:none;color:inherit">원본 새 탭에서 열기</a>
+    </div>
+  </div>
+</section>
+
+<!-- 뷰어 -->
+<div class="tabs" id="tabs" role="tablist" hidden>
+  <button type="button" role="tab" data-tab="page" aria-selected="true">페이지</button>
+  <button type="button" role="tab" data-tab="videos" aria-selected="false">동영상 <span class="count" id="tabCount">0</span></button>
+</div>
+<div id="viewer" data-tab="page" hidden>
+  <div class="framewrap">
+    <iframe id="frame" title="광고가 제거된 페이지" sandbox="allow-same-origin allow-forms" referrerpolicy="no-referrer"></iframe>
+  </div>
+  <aside id="side" aria-label="동영상 목록">
+    <div class="side-head">
+      <h2>동영상 <span class="count" id="count">0</span></h2>
+      <div class="title-line" id="pageTitle"></div>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div id="vlist"></div>
+    <div class="addbox">
+      <label for="addUrl">동영상 주소 직접 추가</label>
+      <form class="addrow" id="addForm" autocomplete="off">
+        <input class="urlin" id="addUrl" type="text" inputmode="url" spellcheck="false" placeholder="https://…/video.mp4">
+        <button class="btn sm primary" type="submit">추가</button>
+      </form>
+    </div>
+  </aside>
+</div>
+
+<div id="busy" hidden role="status" aria-live="polite">
+  <div><div class="spinner"></div><div id="busyText" style="font-weight:600">불러오는 중…</div><div id="busyUrl"></div>
+    <div class="row" style="justify-content:center"><button class="btn sm" id="busyCancel" type="button">취소</button></div></div>
+</div>
+
+<!-- 설정 -->
+<dialog id="settings">
+  <div class="dlg-h"><h2>설정</h2><button class="icon-btn" id="settingsClose" type="button" aria-label="닫기">✕</button></div>
+  <div class="dlg-b">
+    <div class="field">
+      <label class="t">차단 강도</label>
+      <div class="seg">
+        <label><input type="radio" name="level" value="standard"><b>표준</b><small>광고·트래커·팝업·쿠키 배너</small></label>
+        <label><input type="radio" name="level" value="strong"><b>강력</b><small>배너·프로모션·모달·고정 요소까지 (페이지가 일부 깨질 수 있음)</small></label>
+      </div>
+    </div>
+    <div class="field">
+      <label class="t"><input type="checkbox" id="optDisk"> 디스크로 직접 저장 (대용량 권장)</label>
+      <div class="hint" id="diskHint">저장 위치를 먼저 묻고 받으면서 바로 파일에 씁니다. 메모리를 거의 쓰지 않습니다. (Chrome · Edge 지원)</div>
+    </div>
+    <div class="field">
+      <label class="t" for="optProxy">내 CORS 프록시 (선택)</label>
+      <input class="urlin" id="optProxy" type="text" spellcheck="false" placeholder="https://my-proxy.example.com/?url={url}" style="width:100%">
+      <div class="hint"><code>{url}</code> 자리에 주소(인코딩됨)가 들어갑니다. 설정하면 가장 먼저 사용됩니다.</div>
+    </div>
+    <div class="row" style="margin:0">
+      <button class="btn danger sm" id="clearHist" type="button">방문 기록 지우기</button>
+      <button class="btn primary sm" id="settingsSave" type="button" style="margin-left:auto">저장</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- 미리보기 -->
+<dialog id="pv">
+  <div class="dlg-h"><h2 id="pvTitle">미리보기</h2><button class="icon-btn" id="pvClose" type="button" aria-label="닫기">✕</button></div>
+  <video id="pvVideo" controls playsinline></video>
+</dialog>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* =====================================================================
+ * 유틸
+ * ===================================================================== */
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+const settings = Object.assign({ level: 'standard', disk: false, proxy: '' }, store.get('bb.settings', {}));
+const saveSettings = () => store.set('bb.settings', settings);
+const hasDiskApi = 'showSaveFilePicker' in window;
+
+let toastTimer;
+function toast(msg, ms = 2800) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+function fmtBytes(n) {
+  if (!n) return '0 B';
+  const u = ['B','KB','MB','GB','TB']; const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  return (n / 1024 ** i).toFixed(i ? 1 : 0) + ' ' + u[i];
+}
+function normalizeUrl(input) {
+  let s = String(input || '').trim();
+  if (!s || /\s/.test(s)) return null;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(s) && !/^localhost:|^\d+\.\d+\.\d+\.\d+:/i.test(s)) return null;
+    s = 'https://' + s.replace(/^\/\//, '');
+  }
+  try { const u = new URL(s); if (!/^https?:$/.test(u.protocol) || !u.hostname.includes('.') && u.hostname !== 'localhost') return null; return u.href; } catch { return null; }
+}
+const hostOf = u => { try { return new URL(u).hostname; } catch { return ''; } };
+
+/* =====================================================================
+ * 광고 / 트래커 규칙
+ * ===================================================================== */
+const AD_DOMAINS = [
+  'doubleclick.net','googlesyndication.com','googleadservices.com','googletagservices.com','googletagmanager.com','google-analytics.com',
+  'adservice.google.com','pagead2.googlesyndication.com','2mdn.net','adnxs.com','adsrvr.org','amazon-adsystem.com','criteo.com','criteo.net',
+  'taboola.com','outbrain.com','revcontent.com','mgid.com','adskeeper.com','scorecardresearch.com','quantserve.com','quantcount.com',
+  'pubmatic.com','rubiconproject.com','openx.net','casalemedia.com','moatads.com','adform.net','smartadserver.com','yieldmo.com','teads.tv',
+  'serving-sys.com','advertising.com','popads.net','popcash.net','propellerads.com','exoclick.com','juicyads.com','trafficjunky.com','adsterra.com',
+  'hilltopads.net','clickadu.com','onclickads.net','zedo.com','a-ads.com','adbro.me','ero-advertising.com','hotjar.com','mixpanel.com','chartbeat.com',
+  'sharethrough.com','triplelift.com','indexww.com','media.net','adcolony.com','inmobi.com','applovin.com','unity3d.com','smaato.net','bidswitch.net',
+  'lijit.com','sovrn.com','33across.com','adroll.com','facebook.com/tr','ads-twitter.com','analytics.twitter.com','ads.linkedin.com','snap.licdn.com',
+  'ad.daum.net','adfit.kakao.com','display.ad.daum.net','t1.daumcdn.net/kas','mobon.net','adcr.naver.com','dable.io','realclick.co.kr','adpnut.com',
+  'tenping.kr','cauly.co.kr','adop.cc','aralego.com','widerplanet.com','enliple.com','interworksmedia.co.kr','nasmedia.co.kr','tpmn.co.kr','mediacategory.com',
+  'cpm.mobon.net','criteo.co.kr','ad.gmarket.co.kr','adbrix.io','igaworks.com','fsnetwork.co.kr','cdn.krxd.net','krxd.net'
+].filter(d => !d.includes('/'));
+const AD_HOST_RE = new RegExp('(^|\\.)(' + AD_DOMAINS.map(d => d.replace(/\./g, '\\.')).join('|') + ')$', 'i');
+const AD_SUB_RE  = /^(ads?|adserver\d*|adservice|adsystem|adx|banner|banners|track|tracking|tracker|pixel|metrics|telemetry|analytics)\d*\./i;
+const isAdHost = (u, strictList = false) => { const h = hostOf(u); return !!h && (AD_HOST_RE.test(h) || (!strictList && AD_SUB_RE.test(h))); };
+
+const AD_SELECTORS = [
+  'ins.adsbygoogle','[class*="adsbygoogle"]','[data-ad-client]','[data-ad-slot]','[data-ad-unit]','[data-adunit]','[data-google-query-id]',
+  '[id^="google_ads"]','[id^="div-gpt-ad"]','[id^="gpt-ad"]','[id^="aswift"]','[id*="adsbygoogle"]','[id^="ad-slot"]','[id^="adslot"]',
+  'amp-ad','amp-embed','amp-sticky-ad','amp-auto-ads','[id^="taboola"]','[class*="taboola"]','[id^="outbrain"]','.OUTBRAIN','[data-outbrain]','[data-widget-id^="taboola"]',
+  '[aria-label="advertisement" i]','[aria-label="sponsored" i]','[aria-label="광고"]','[title="광고"]','[title="advertisement" i]','[data-testid*="advert" i]','[data-component*="advert" i]','[data-ad]','[data-adtype]',
+  'ins.kakao_ad_area','.kakao_ad_area','[class*="kakao_ad"]','[id^="kakao_ad"]','[id^="dable"]','[class^="dable"]','[class*="criteo"]','[id*="criteo"]',
+  'a[href*="/ads/click"]','a[href*="adclick"]','[class*="adfox"]','[id^="yandex_rtb"]','[class*="yandex-rtb"]'
+];
+const STRONG_SELECTORS = [
+  '[class*="banner" i]','[id*="banner" i]','[class*="popup" i]','[id*="popup" i]','[class*="modal" i]','[class*="overlay" i]','[class*="promo" i]',
+  '[class*="newsletter" i]','[class*="subscribe" i]','[class*="cookie" i]','[class*="consent" i]','[class*="sticky-ad" i]','aside[class*="side" i] iframe'
+];
+const STD_TOKEN_RE = /(?:^| )(?:ad|ads|adv|advert|adverts|advertisement|advertisements|advertising|adsense|adsbygoogle|adslot|adunit|adwrap|adwrapper|adbox|adbanner|adcontainer|adspace|adsbox|sponsor|sponsors|sponsored|promoted|dfp|taboola|outbrain|popup|popunder|interstitial|cookie|cookies|gdpr|광고|배너광고)(?: |$)/;
+const STRONG_RE = /(banner|bnr|popup|modal|overlay|promo|sponsor|advert|newsletter|subscribe|cookie|consent|gdpr|adsense|taboola|outbrain|광고|배너)/;
+const normTokens = s => s.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().replace(/[^a-z0-9가-힣]+/g, ' ').trim();
+
+const EMBED_RE = /(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be|vimeo\.com|dailymotion\.com|twitch\.tv|tv\.naver\.com|serviceapi\.nmv\.naver\.com|tv\.kakao\.com|play-tv\.kakao\.com|facebook\.com|tiktok\.com|streamable\.com|bilibili\.com|wistia\.(com|net)|jwplatform\.com|brightcove\.net|vk\.com|ok\.ru|instagram\.com)$/i;
+const VIDEO_EXT_RE = /\.(mp4|m4v|webm|mov|mkv|m3u8|mpd|ogv|flv|3gp|avi|wmv)$/i;
+const isVideoUrl = u => { try { return VIDEO_EXT_RE.test(new URL(u).pathname); } catch { return false; } };
+const classify = u => { try { const p = new URL(u).pathname.toLowerCase(); return p.endsWith('.m3u8') ? 'hls' : p.endsWith('.mpd') ? 'dash' : 'file'; } catch { return 'file'; } };
+function embedToWatch(u) {
+  try {
+    const x = new URL(u), h = x.hostname.replace(/^www\./, '');
+    let m;
+    if (/youtube(-nocookie)?\.com$/.test(h) && (m = /^\/embed\/([\w-]{6,})/.exec(x.pathname))) return 'https://www.youtube.com/watch?v=' + m[1];
+    if (h === 'player.vimeo.com' && (m = /^\/video\/(\d+)/.exec(x.pathname))) return 'https://vimeo.com/' + m[1];
+  } catch {}
+  return u;
+}
+
+/* =====================================================================
+ * HTML 가공: 동영상 수집 → 스크립트/광고 제거 → 안전한 srcdoc 생성
+ * ===================================================================== */
+const SAFE_TAGS = new Set(['HTML','BODY','HEAD','MAIN','ARTICLE','VIDEO','AUDIO','SOURCE','TRACK','PICTURE','IMG','SVG']);
+function canRemove(el) {
+  if (SAFE_TAGS.has(el.tagName.toUpperCase())) return false;
+  if (el.querySelector('main,article,h1,video,audio')) return false;
+  if ((el.textContent || '').length > 2500) return false;
+  return true;
+}
+
+function processHtml(raw, pageUrl) {
+  const strong = settings.level === 'strong';
+  const doc = new DOMParser().parseFromString(raw, 'text/html');
+  const stats = { script: 0, frame: 0, ad: 0, tracker: 0 };
+  let blobVideo = false;
+
+  let base = pageUrl;
+  const baseEl = doc.querySelector('base[href]');
+  if (baseEl) { try { base = new URL(baseEl.getAttribute('href'), pageUrl).href; } catch {} }
+  const abs = u => {
+    if (!u) return null; u = String(u).trim();
+    if (!u || /^(data|blob|javascript|about|mailto|tel):/i.test(u)) return null;
+    try { const r = new URL(u, base); return /^https?:$/.test(r.protocol) ? r.href : null; } catch { return null; }
+  };
+  const title = (doc.title || '').trim();
+
+  /* ---- 1. 동영상 수집 (제거 전에!) ---- */
+  const found = new Map();
+  const addVideo = (url, source, extra = {}) => {
+    const u = abs(url); if (!u || isAdHost(u, true)) return;
+    const key = u.replace(/#.*$/, '');
+    if (found.has(key)) { const e = found.get(key); if (!e.poster && extra.poster) e.poster = abs(extra.poster) || ''; return; }
+    found.set(key, { id: 'v' + found.size, url: u, type: extra.type || classify(u), source, poster: extra.poster ? (abs(extra.poster) || '') : '' });
+  };
+  const typeFromMime = t => /mpegurl/i.test(t || '') ? 'hls' : /dash\+xml/i.test(t || '') ? 'dash' : undefined;
+
+  doc.querySelectorAll('video').forEach(v => {
+    const poster = v.getAttribute('poster');
+    const list = [[v.getAttribute('src') || v.getAttribute('data-src'), typeFromMime(v.getAttribute('type'))]];
+    v.querySelectorAll('source').forEach(s => list.push([s.getAttribute('src') || s.getAttribute('data-src'), typeFromMime(s.getAttribute('type'))]));
+    list.forEach(([s, t]) => { if (!s) return; if (/^blob:/i.test(s.trim())) blobVideo = true; else addVideo(s, '<video> 태그', { poster, type: t }); });
+  });
+
+  const ogType = doc.querySelector('meta[property="og:video:type"]')?.getAttribute('content') || '';
+  doc.querySelectorAll('meta[property^="og:video"],meta[name="twitter:player:stream"],meta[itemprop="contentUrl"],meta[itemprop="embedUrl"]').forEach(m => {
+    const c = m.getAttribute('content'); const prop = m.getAttribute('property') || m.getAttribute('name') || m.getAttribute('itemprop');
+    if (!c || /og:video:(type|width|height|tag|duration|release)/.test(prop)) return;
+    const u = abs(c); if (!u) return;
+    const img = doc.querySelector('meta[property="og:image"]')?.getAttribute('content');
+    if (isVideoUrl(u) || prop === 'twitter:player:stream' || (/^video\//i.test(ogType) && !/text\/html/i.test(ogType) && prop.startsWith('og:video'))) addVideo(u, '메타 태그', { poster: img });
+    else if (EMBED_RE.test(hostOf(u))) addVideo(u, '메타 태그(임베드)', { type: 'embed', poster: img });
+  });
+
+  const walkLd = o => {
+    if (!o || typeof o !== 'object') return;
+    if (Array.isArray(o)) return o.forEach(walkLd);
+    const t = [].concat(o['@type'] || []).join(',');
+    if (o.contentUrl && typeof o.contentUrl === 'string' && (/Video/i.test(t) || isVideoUrl(o.contentUrl)))
+      addVideo(o.contentUrl, '구조화 데이터', { poster: [].concat(o.thumbnailUrl || [])[0] });
+    Object.values(o).forEach(walkLd);
+  };
+  doc.querySelectorAll('script[type="application/ld+json"]').forEach(s => { try { walkLd(JSON.parse(s.textContent)); } catch {} });
+
+  doc.querySelectorAll('a[href]').forEach(a => { const u = abs(a.getAttribute('href')); if (u && isVideoUrl(u)) addVideo(u, '링크'); });
+
+  const norm = raw.replace(/\\u002F/gi, '/').replace(/\\\//g, '/').replace(/\\u0026/gi, '&').replace(/&amp;/g, '&');
+  const re = /(?:https?:)?\/\/[^\s"'<>\\()\[\]{}|^`]+?\.(?:mp4|m4v|webm|mov|mkv|m3u8|mpd|ogv|flv|3gp)(?![\w.\-])(?:\?[^\s"'<>\\()\[\]{}|^`]*)?/gi;
+  let m, guard = 0;
+  while ((m = re.exec(norm)) && guard++ < 400) addVideo(m[0].startsWith('//') ? 'https:' + m[0] : m[0], '페이지 소스');
+
+  /* ---- 2. 제거 ---- */
+  doc.querySelectorAll('link[rel~="preload"][as="style"]').forEach(l => { if (!isAdHost(abs(l.getAttribute('href')) || '')) l.setAttribute('rel', 'stylesheet'); });
+  doc.querySelectorAll('script').forEach(n => { n.remove(); stats.script++; });
+  doc.querySelectorAll('noscript,base,meta[http-equiv],link[rel~="preload"],link[rel~="prefetch"],link[rel~="modulepreload"],link[rel~="dns-prefetch"],link[rel~="preconnect"],link[rel~="prerender"]').forEach(n => n.remove());
+
+  doc.querySelectorAll('iframe,frame,frameset,object,embed,applet').forEach(n => {
+    stats.frame++;
+    const src = abs(n.getAttribute('src') || n.getAttribute('data-src') || n.getAttribute('data'));
+    if (src && n.tagName === 'IFRAME' && EMBED_RE.test(hostOf(src)) && !isAdHost(src, true)) {
+      addVideo(src, '임베드 플레이어', { type: 'embed' });
+      const ph = doc.createElement('div'); ph.className = 'bb-embed';
+      const a = doc.createElement('a'); a.href = embedToWatch(src); a.setAttribute('data-bb-external', '1');
+      a.textContent = '▶ 외부 플레이어 임베드 (' + hostOf(src).replace(/^www\./, '') + ') — 원본에서 열기';
+      ph.appendChild(a); n.replaceWith(ph);
+    } else n.remove();
+  });
+
+  const dropMedia = el => {
+    const a = el.closest && el.closest('a');
+    el.remove();
+    if (a && a.isConnected && !a.textContent.trim() && !a.querySelector('img,picture,video,svg')) a.remove();
+  };
+  doc.querySelectorAll('[src],[srcset],link[rel~="stylesheet"]').forEach(el => {
+    if (!el.isConnected) return;
+    const u = abs(el.getAttribute('src') || el.getAttribute('href') || (el.getAttribute('srcset') || '').trim().split(/\s+/)[0]);
+    if (u && isAdHost(u)) { dropMedia(el); stats.tracker++; }
+  });
+  doc.querySelectorAll('img').forEach(i => {
+    const w = +i.getAttribute('width'), h = +i.getAttribute('height');
+    if (w && h && w <= 2 && h <= 2) { i.remove(); stats.tracker++; }
+  });
+
+  doc.querySelectorAll('a[href]').forEach(a => {
+    const href = a.getAttribute('href') || '';
+    if (/^\s*javascript:/i.test(href)) { a.removeAttribute('href'); return; }
+    const u = abs(href);
+    const sponsored = /\bsponsored\b/i.test(a.getAttribute('rel') || '') && a.querySelector('img,picture') && a.textContent.trim().length < 30;
+    if ((u && isAdHost(u, true)) || sponsored) {
+      if ((a.textContent || '').trim().length < 60) { a.remove(); stats.ad++; } else a.removeAttribute('href');
+      return;
+    }
+    a.setAttribute('target', '_blank');
+  });
+  doc.querySelectorAll('area,form').forEach(n => { if (n.tagName === 'AREA') n.setAttribute('target', '_blank'); });
+
+  const selectors = AD_SELECTORS.concat(strong ? STRONG_SELECTORS : []);
+  for (const sel of selectors) {
+    let list; try { list = doc.querySelectorAll(sel); } catch { continue; }
+    list.forEach(el => { if (el.isConnected && canRemove(el)) { el.remove(); stats.ad++; } });
+  }
+  doc.body && doc.body.querySelectorAll('*').forEach(el => {
+    if (!el.isConnected) return;
+    const id = el.getAttribute('id') || '', cls = el.getAttribute('class') || '';
+    if (!id && !cls) return;
+    const s = normTokens(id + ' ' + cls);
+    if ((STD_TOKEN_RE.test(s) || (strong && STRONG_RE.test(s))) && canRemove(el)) { el.remove(); stats.ad++; }
+  });
+  doc.querySelectorAll('div,span,p,small,li').forEach(el => {
+    if (el.children.length === 0 && /^(광고|advertisement|sponsored|ad|ads|스폰서|sponsored content)$/i.test(el.textContent.trim())) el.remove();
+  });
+
+  /* ---- 3. 스크립트 없이도 보이도록 보정 ---- */
+  const LAZY = ['data-src','data-original','data-lazy-src','data-lazy','data-url','data-echo','data-original-src','data-actualsrc','data-hi-res-src'];
+  const placeholder = s => !s || /^data:/i.test(s) || /(blank|placeholder|spacer|lazy|loading|transparent|1x1|pixel)\.(gif|png|jpe?g|svg)/i.test(s);
+  doc.querySelectorAll('img,source,video,audio').forEach(el => {
+    if (placeholder(el.getAttribute('src'))) for (const a of LAZY) { const v = el.getAttribute(a); if (v && !/^data:/i.test(v)) { el.setAttribute('src', v); break; } }
+    const ds = el.getAttribute('data-srcset'); if (ds && (!el.getAttribute('srcset') || placeholder(el.getAttribute('srcset')))) el.setAttribute('srcset', ds);
+    if (el.tagName === 'IMG') el.removeAttribute('loading');
+  });
+  doc.querySelectorAll('video').forEach(v => { v.removeAttribute('autoplay'); v.setAttribute('controls', ''); v.setAttribute('preload', 'metadata'); v.setAttribute('playsinline', ''); });
+  doc.querySelectorAll('*').forEach(el => { for (const at of [...el.attributes]) if (/^on/i.test(at.name)) el.removeAttribute(at.name); });
+
+  /* ---- 4. head 주입 ---- */
+  const csp = "default-src * data: blob: 'unsafe-inline'; script-src 'none'; object-src 'none'; frame-src 'none'; media-src * data: blob:" + (location.protocol === 'https:' ? '; upgrade-insecure-requests' : '');
+  const css = `html,body{overflow-y:auto!important}
+img[data-src],img.lazyload,img.lazy,img.lozad,.lazyload,.lazy,.lozad{opacity:1!important;visibility:visible!important}
+[data-aos],.aos-init,.wow,.reveal{opacity:1!important;visibility:visible!important;transform:none!important}
+.bb-embed{display:block;padding:14px 16px;margin:10px 0;border:1px dashed #8a94a3;border-radius:10px;background:#f2f4f7;font:14px/1.4 system-ui,sans-serif}
+.bb-embed a{color:#0f766e;font-weight:600;text-decoration:none}`;
+  doc.head.insertAdjacentHTML('afterbegin',
+    `<meta http-equiv="Content-Security-Policy" content="${esc(csp)}"><meta name="referrer" content="no-referrer"><base href="${esc(base)}" target="_blank"><style id="bb-style">${css}</style>`);
+
+  const order = { file: 0, hls: 1, dash: 2, embed: 3 };
+  const videos = [...found.values()].sort((a, b) => order[a.type] - order[b.type]).map((v, i) => ({ ...v, id: 'v' + i }));
+  return { html: '<!doctype html>' + doc.documentElement.outerHTML, videos, stats, title, base, blobVideo };
+}
+
+/* =====================================================================
+ * 네트워크: 경로(직접 / 프록시) 시도
+ * ===================================================================== */
+let localProxy;  // undefined: 미확인, true/false
+const ROUTES = {
+  custom:     { label: '내 프록시',   enabled: () => !!settings.proxy.trim(), timeout: 25000,
+                url: u => { const t = settings.proxy.trim(); return t.includes('{url}') ? t.replace('{url}', encodeURIComponent(u)) : t + encodeURIComponent(u); } },
+  local:      { label: '/api/proxy', enabled: () => localProxy !== false, timeout: 25000, url: u => '/api/proxy?url=' + encodeURIComponent(u) },
+  direct:     { label: '직접 연결',   enabled: () => true, timeout: 15000,
+                url: u => (location.protocol === 'https:' ? u.replace(/^http:/i, 'https:') : u) },
+  allorigins: { label: 'AllOrigins', enabled: () => true, timeout: 20000, url: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u) },
+  corsproxy:  { label: 'corsproxy.io', enabled: () => true, timeout: 20000, url: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u) }
+};
+const anySignal = list => {
+  list = list.filter(Boolean);
+  if (AbortSignal.any) return AbortSignal.any(list);
+  const c = new AbortController();
+  for (const s of list) { if (s.aborted) { c.abort(s.reason); break; } s.addEventListener('abort', () => c.abort(s.reason), { once: true }); }
+  return c.signal;
+};
+const abortErr = () => new DOMException('Aborted', 'AbortError');
+
+async function fetchVia(name, target, { signal, timeout }) {
+  const r = ROUTES[name];
+  const tctrl = new AbortController();
+  const timer = setTimeout(() => tctrl.abort(new Error('시간 초과')), timeout || r.timeout);
+  try {
+    const res = await fetch(r.url(target), { signal: anySignal([signal, tctrl.signal]), credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'follow' });
+    if (name === 'local') {
+      if (!res.headers.get('x-bannerblock')) { localProxy = false; throw new Error('프록시 없음'); }
+      localProxy = true;
+    }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res;
+  } finally { clearTimeout(timer); }
+}
+async function fetchRoutes(target, order, { signal, timeout, onStatus, accept } = {}) {
+  const errors = [];
+  for (const name of order) {
+    const r = ROUTES[name]; if (!r.enabled()) continue;
+    if (signal?.aborted) throw abortErr();
+    onStatus?.(r.label + '(으)로 가져오는 중…');
+    try {
+      const res = await fetchVia(name, target, { signal, timeout });
+      if (accept && !accept(res)) { res.body?.cancel?.(); throw new Error('예상과 다른 응답 형식'); }
+      return { res, route: name };
+    } catch (e) {
+      if (signal?.aborted) throw abortErr();
+      if (name === 'local' && localProxy === false) continue;
+      errors.push(r.label + ' — ' + (e.name === 'TypeError' ? 'CORS 또는 네트워크 차단' : (e.message || e)));
+    }
+  }
+  const err = new Error('모든 연결 방식이 실패했습니다'); err.details = errors; throw err;
+}
+function makeFetcher(order, onStatus) {
+  let pref = null;
+  return {
+    async get(u, signal, accept) {
+      const ord = pref ? [pref, ...order.filter(o => o !== pref)] : order;
+      const r = await fetchRoutes(u, ord, { signal, onStatus, accept });
+      pref = r.route; return r;
+    },
+    get via() { return pref ? ROUTES[pref].label : ''; }
+  };
+}
+const PAGE_ORDER = ['custom', 'local', 'direct', 'allorigins', 'corsproxy'];
+const FILE_ORDER = ['direct', 'custom', 'local'];
+
+function decodeHtml(buf, ct) {
+  let cs = /charset=["']?([\w-]+)/i.exec(ct || '')?.[1];
+  if (!cs) { const head = new TextDecoder('latin1').decode(buf.slice(0, 4096)); cs = /<meta[^>]+charset=["']?([\w-]+)/i.exec(head)?.[1]; }
+  try { return new TextDecoder(cs || 'utf-8').decode(buf); } catch { return new TextDecoder('utf-8').decode(buf); }
+}
+async function fetchPage(url, onStatus, signal) {
+  const { res, route } = await fetchRoutes(url, PAGE_ORDER, { timeout: 20000, onStatus, signal });
+  const ct = res.headers.get('content-type') || '';
+  if (/^(video|audio)\//i.test(ct) || /mpegurl/i.test(ct)) { res.body?.cancel?.(); return { video: true }; }
+  const text = decodeHtml(await res.arrayBuffer(), ct);
+  if (!/<\s*(!doctype|html|head|body|div|p|a|meta|title|script)\b/i.test(text.slice(0, 8000))) throw Object.assign(new Error('HTML 문서가 아닙니다 (' + (ct || '알 수 없는 형식') + ')'), { details: [] });
+  return { text, route, ct };
+}
+
+/* =====================================================================
+ * 상태 / 화면
+ * ===================================================================== */
+const state = { url: '', title: '', videos: [], stats: null, hist: [], idx: -1, base: '', blobVideo: false };
+let pageCtrl = null;
+const downloads = new Map();   // id → {ctrl, ui}
+let frameTimer = 0;
+
+function setView(v) {
+  $('#home').hidden = v !== 'home';
+  $('#error').hidden = v !== 'error';
+  $('#viewer').hidden = v !== 'viewer';
+  $('#tabs').hidden = v !== 'viewer';
+  const inApp = v !== 'home';
+  $('#barForm').hidden = !inApp; $('#navbtns').hidden = !inApp; $('#openorig').hidden = !inApp;
+  document.body.dataset.view = v;
+  if (v === 'home') { document.title = 'BannerBlock — 광고 차단 뷰어 & 동영상 다운로더'; try { history.replaceState(null, '', location.pathname); } catch {} renderRecent(); }
+}
+function setBusy(on, text, url) {
+  $('#busy').hidden = !on;
+  if (on) { $('#busyText').textContent = text || '불러오는 중…'; $('#busyUrl').textContent = url || ''; }
+}
+function syncInputs(url) { $('#barUrl').value = url; $('#heroUrl').value = url; $('#openorig').dataset.href = url; }
+function updateNav() { $('#back').disabled = state.idx <= 0; $('#fwd').disabled = state.idx >= state.hist.length - 1; }
+function setTab(t) {
+  $('#viewer').dataset.tab = t;
+  $$('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
+}
+function addRecent(url, title) {
+  const list = store.get('bb.recent', []).filter(r => r.url !== url);
+  list.unshift({ url, title: title || '', t: Date.now() }); store.set('bb.recent', list.slice(0, 8));
+}
+function renderRecent() {
+  const list = store.get('bb.recent', []);
+  $('#recent').innerHTML = list.map(r => `<button class="chip" type="button" data-url="${esc(r.url)}" title="${esc(r.url)}">${esc(r.title ? r.title.slice(0, 40) : hostOf(r.url))}</button>`).join('');
+}
+
+/* ---- 열기 ---- */
+async function openTarget(input, opts = {}) {
+  const url = normalizeUrl(input);
+  if (!url) { toast('올바른 주소를 입력해 주세요. 예: https://example.com'); return; }
+  pageCtrl?.abort(); const ctrl = pageCtrl = new AbortController();
+  cancelAllDownloadsOnNav();
+  syncInputs(url);
+  if (isVideoUrl(url)) return showDirect(url, opts);
+  setBusy(true, '페이지를 가져오는 중…', url);
+  try {
+    const r = await fetchPage(url, msg => { if (!ctrl.signal.aborted) $('#busyText').textContent = msg; }, ctrl.signal);
+    if (ctrl.signal.aborted) return;
+    if (r.video) { setBusy(false); return showDirect(url, opts); }
+    $('#busyText').textContent = '광고·스크립트 제거 중…';
+    await sleep(0);
+    const out = processHtml(r.text, url);
+    if (ctrl.signal.aborted) return;
+    Object.assign(state, { url, title: out.title, videos: out.videos, stats: out.stats, base: out.base, blobVideo: out.blobVideo });
+    commitHistory(url, opts);
+    setView('viewer'); setTab('page');
+    renderSide(); renderFrame(out.html);
+    document.title = (out.title ? out.title + ' · ' : '') + 'BannerBlock';
+    addRecent(url, out.title);
+    try { history.replaceState(null, '', '?url=' + encodeURIComponent(url)); } catch {}
+    setBusy(false);
+  } catch (e) {
+    if (ctrl.signal.aborted) return;
+    setBusy(false); showError(url, e);
+  }
+}
+function commitHistory(url, opts) {
+  if (opts.push === false) return;
+  state.hist.length = state.idx + 1; if (state.hist[state.idx] !== url) { state.hist.push(url); state.idx++; }
+  updateNav();
+}
+function showError(url, e) {
+  Object.assign(state, { url });
+  setView('error');
+  $('#errTitle').textContent = '페이지를 열 수 없습니다';
+  $('#errMsg').innerHTML = `<code>${esc(url)}</code><br>${esc(e.message || String(e))}`;
+  const det = e.details || [];
+  $('#errList').innerHTML = det.map(d => `<li>${esc(d)}</li>`).join('') +
+    '<li>사이트가 봇/프록시 접근을 막았거나, 로그인이 필요하거나, 공개 프록시가 일시적으로 막혔을 수 있습니다.</li>';
+  $('#errOpen').href = url;
+  updateNav();
+}
+function showDirect(url, opts) {
+  const type = classify(url);
+  const entry = { id: 'v0', url, type, source: '직접 입력', poster: '' };
+  Object.assign(state, { url, title: decodeURIComponent((new URL(url).pathname.split('/').pop() || hostOf(url))), videos: [entry], stats: { script: 0, frame: 0, ad: 0, tracker: 0 }, base: url, blobVideo: false });
+  commitHistory(url, opts);
+  setView('viewer'); setTab('videos');
+  renderSide();
+  const html = `<!doctype html><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="script-src 'none'"><body style="margin:0;background:#000;display:grid;place-items:center;height:100vh;color:#9aa;font:14px system-ui"><video src="${esc(url)}" controls muted playsinline style="max-width:100%;max-height:100%"></video>`;
+  renderFrame(html, true);
+  document.title = state.title + ' · BannerBlock';
+  try { history.replaceState(null, '', '?url=' + encodeURIComponent(url)); } catch {}
+  setBusy(false);
+}
+
+/* ---- iframe 렌더링 & 후처리 ---- */
+function renderFrame(html, simple = false) {
+  clearInterval(frameTimer);
+  const frame = $('#frame');
+  frame.onload = () => { try { afterFrameLoad(frame, simple); } catch (e) { console.warn('post-render', e); } };
+  frame.srcdoc = html;
+}
+function afterFrameLoad(frame, simple) {
+  const doc = frame.contentDocument, win = frame.contentWindow;
+  if (!doc || !doc.body || simple) return;
+  const strong = settings.level === 'strong';
+
+  // 고정 오버레이/하단 바 제거
+  const vw = win.innerWidth, vh = win.innerHeight; let hidden = 0;
+  doc.body.querySelectorAll('*').forEach(el => {
+    if (el.closest('#bb-layer')) return;
+    const cs = win.getComputedStyle(el);
+    if (cs.position !== 'fixed') return;
+    if (el.tagName === 'VIDEO' || el.querySelector('video,main,article') || (el.textContent || '').length > 1500) return;
+    if (/^(HEADER|NAV)$/.test(el.tagName) || el.querySelector('nav')) return;
+    const r = el.getBoundingClientRect();
+    const big = r.width * r.height >= vw * vh * 0.25;
+    const bottomBar = r.width >= vw * 0.6 && r.height <= 220 && r.bottom >= vh - 4;
+    if (big || bottomBar || strong) { el.style.setProperty('display', 'none', 'important'); hidden++; }
+  });
+  if (strong) {
+    doc.querySelectorAll('a[target="_blank"] img').forEach(img => {
+      const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+      if ([[728,90],[300,250],[320,50],[160,600],[970,250],[300,600],[468,60],[320,100],[336,280],[970,90]].some(([a,b]) => w === a && h === b)) {
+        img.closest('a')?.remove(); hidden++;
+      }
+    });
+  }
+  if (hidden) { state.stats.ad += hidden; renderStats(); }
+
+  // 이벤트 가로채기
+  doc.addEventListener('click', onFrameClick, true);
+  doc.addEventListener('submit', onFrameSubmit, true);
+
+  // 동영상 위 다운로드 버튼
+  placeVideoButtons(doc, win);
+}
+function onFrameClick(e) {
+  const doc = e.currentTarget;
+  const a = e.target.closest && e.target.closest('a');
+  if (!a) return;
+  const raw = a.getAttribute('href');
+  if (raw == null) return;
+  e.preventDefault();
+  if (a.hasAttribute('data-bb-external')) { window.open(a.href, '_blank', 'noopener,noreferrer'); return; }
+  if (raw.startsWith('#')) { const id = decodeURIComponent(raw.slice(1)); const t = id && (doc.getElementById(id) || doc.getElementsByName(id)[0]); (t || doc.documentElement).scrollIntoView?.(); return; }
+  if (!/^https?:/i.test(a.href)) return;
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) { window.open(location.pathname + '?url=' + encodeURIComponent(a.href), '_blank'); return; }
+  openTarget(a.href);
+}
+function onFrameSubmit(e) {
+  e.preventDefault();
+  const f = e.target;
+  if ((f.getAttribute('method') || 'get').toLowerCase() !== 'get') { toast('이 앱은 입력 전송(POST)을 지원하지 않습니다'); return; }
+  try {
+    const u = new URL(f.action || state.base); new FormData(f).forEach((v, k) => { if (typeof v === 'string') u.searchParams.set(k, v); });
+    openTarget(u.href);
+  } catch { toast('폼 전송에 실패했습니다'); }
+}
+function placeVideoButtons(doc, win) {
+  const layer = doc.createElement('div'); layer.id = 'bb-layer';
+  layer.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;z-index:2147483647';
+  doc.body.appendChild(layer);
+  const items = [];
+  doc.querySelectorAll('video').forEach(v => {
+    const urls = [v.getAttribute('src'), ...[...v.querySelectorAll('source')].map(s => s.getAttribute('src'))].filter(Boolean)
+      .map(u => { try { return new URL(u, doc.baseURI).href.replace(/#.*$/, ''); } catch { return null; } }).filter(Boolean);
+    const entry = state.videos.find(x => urls.includes(x.url.replace(/#.*$/, '')));
+    if (!entry) return;
+    const b = doc.createElement('button'); b.type = 'button'; b.textContent = '⬇ 다운로드';
+    b.style.cssText = 'position:absolute;white-space:nowrap;padding:7px 12px;border:0;border-radius:8px;background:rgba(15,118,110,.96);color:#fff;font:600 13px/1 system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.35)';
+    b.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); focusCard(entry.id); startDownload(entry.id); });
+    layer.appendChild(b); items.push({ v, b });
+  });
+  if (!items.length) return;
+  const place = () => {
+    const sx = win.scrollX, sy = win.scrollY;
+    items.forEach(({ v, b }) => {
+      const r = v.getBoundingClientRect();
+      b.style.display = r.width > 60 && r.height > 50 ? 'block' : 'none';
+      b.style.left = (r.left + sx + 8) + 'px'; b.style.top = (r.top + sy + 8) + 'px';
+    });
+  };
+  place(); frameTimer = setInterval(place, 600);
+}
+
+/* ---- 사이드 패널 ---- */
+function renderStats() {
+  const s = state.stats; if (!s) return;
+  const total = s.script + s.frame + s.ad + s.tracker;
+  $('#stats').innerHTML = `<span class="stat">총 ${total}개 차단</span>` +
+    [['스크립트', s.script], ['프레임', s.frame], ['광고 요소', s.ad], ['트래커', s.tracker]].filter(x => x[1]).map(([n, c]) => `<span class="stat" style="background:var(--surface2);color:var(--muted)">${n} ${c}</span>`).join('');
+}
+function badgeFor(v) {
+  if (v.type === 'hls') return '<span class="badge hls">HLS</span>';
+  if (v.type === 'dash') return '<span class="badge dash">DASH</span>';
+  if (v.type === 'embed') return '<span class="badge embed">임베드</span>';
+  const ext = /\.([a-z0-9]{2,4})$/i.exec((() => { try { return new URL(v.url).pathname; } catch { return ''; } })())?.[1];
+  return `<span class="badge">${esc((ext || 'video').toUpperCase())}</span>`;
+}
+const GENERIC = /^(index|master|playlist|video|stream|chunklist|manifest|main|play|media|file|download)$/i;
+const cleanName = s => s.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/\s+/g, ' ').trim();
+function baseName(v) {
+  let n = ''; try { n = decodeURIComponent(new URL(v.url).pathname.split('/').filter(Boolean).pop() || ''); } catch {}
+  n = cleanName(n.replace(/\.[a-z0-9]{2,5}$/i, ''));
+  if (!n || n.length < 3 || GENERIC.test(n)) n = cleanName(state.title || '').slice(0, 80);
+  return n || 'video';
+}
+function extFor(v) {
+  if (v.type === 'hls') return 'ts';
+  let e = ''; try { e = (/\.([a-z0-9]{2,4})$/i.exec(new URL(v.url).pathname)?.[1] || '').toLowerCase(); } catch {}
+  return /^(mp4|m4v|webm|mov|mkv|ogv|flv|3gp|avi|wmv)$/.test(e) ? e : 'mp4';
+}
+const MIME = { mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', mkv: 'video/x-matroska', ogv: 'video/ogg', ts: 'video/mp2t' };
+const shortUrl = u => { try { const x = new URL(u); return x.hostname + x.pathname + x.search; } catch { return u; } };
+
+function cardHtml(v) {
+  const dl = v.type === 'file' || v.type === 'hls';
+  const thumb = v.poster ? `<img src="${esc(v.poster)}" alt="" loading="lazy" referrerpolicy="no-referrer">` :
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9.5 5 2.5-5 2.5z"/></svg>';
+  const name = v.type === 'embed' ? shortUrl(v.url) : baseName(v) + '.' + extFor(v);
+  const openHref = v.type === 'embed' ? embedToWatch(v.url) : v.url;
+  let note = '';
+  if (v.type === 'embed') note = '<div class="vstat">스트리밍 서비스 임베드는 앱에서 저장할 수 없습니다.</div>';
+  if (v.type === 'dash') note = '<div class="vstat">DASH(.mpd) 스트림은 지원하지 않습니다.</div>';
+  if (v.type === 'hls') note = '<div class="vstat">조각을 이어 붙인 .ts 파일로 저장됩니다 (VLC 등으로 재생).</div>';
+  return `<article class="vcard" id="card-${v.id}" data-id="${v.id}">
+    <div class="vthumb">${thumb}</div>
+    <div style="min-width:0">
+      <div class="vtop">${badgeFor(v)}<span class="vsrc">${esc(v.source)}</span></div>
+      <div class="vname" title="${esc(v.url)}">${esc(name)}</div>
+      <div class="vurl" title="${esc(v.url)}">${esc(shortUrl(v.url))}</div>
+      <div class="vprog" hidden><div class="bar"><i></i></div></div>
+      <div class="vstat" data-stat hidden></div>
+      ${note}
+      <div class="vact">
+        ${dl ? '<button class="btn sm primary" data-act="dl" type="button">다운로드</button>' : ''}
+        ${v.type === 'file' || v.type === 'hls' ? '<button class="btn sm" data-act="preview" type="button">미리보기</button>' : ''}
+        <button class="btn sm" data-act="copy" type="button">링크 복사</button>
+        <a class="btn sm" href="${esc(openHref)}" target="_blank" rel="noopener noreferrer" style="display:inline-grid;place-items:center;text-decoration:none;color:inherit">새 탭</a>
+      </div>
+    </div></article>`;
+}
+function renderSide() {
+  const vs = state.videos;
+  $('#count').textContent = vs.length; $('#tabCount').textContent = vs.length;
+  $('#pageTitle').textContent = state.title || state.url;
+  renderStats();
+  let html = vs.map(cardHtml).join('');
+  if (!vs.length) {
+    html = `<div class="empty"><b>동영상을 찾지 못했습니다</b><br><span style="font-size:13px">자바스크립트로 나중에 불러오는 영상은 이 방식으로 감지되지 않습니다. 영상의 실제 주소(.mp4 / .m3u8)를 알고 있다면 아래에서 직접 추가하세요.</span></div>`;
+  }
+  if (state.blobVideo) html += '<div class="note">이 페이지의 플레이어는 blob 스트리밍(MSE) 방식이라 실제 파일 주소를 알아낼 수 없습니다.</div>';
+  $('#vlist').innerHTML = html;
+  $$('#vlist .vthumb img').forEach(i => i.addEventListener('error', () => i.remove()));
+}
+function focusCard(id) {
+  if (matchMedia('(max-width:900px)').matches) setTab('videos');
+  const c = $('#card-' + id); if (!c) return;
+  c.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash');
+}
+
+/* =====================================================================
+ * 다운로드
+ * ===================================================================== */
+function cardUi(id) {
+  const card = $('#card-' + id); if (!card) return { progress() {}, status() {}, done() {}, fail() {}, reset() {}, setBtn() {} };
+  const prog = $('.vprog', card), bar = $('.bar', card), fill = $('.bar i', card), stat = $('[data-stat]', card), btn = $('[data-act="dl"]', card);
+  return {
+    setBtn(t, cls) { if (btn) { btn.textContent = t; btn.classList.toggle('primary', cls === 'primary'); btn.classList.toggle('danger', cls === 'danger'); } },
+    status(t, kind) { stat.hidden = false; stat.className = 'vstat' + (kind ? ' ' + kind : ''); stat.textContent = t; },
+    start() { prog.hidden = false; bar.classList.add('indet'); fill.style.width = ''; this.setBtn('취소', 'danger'); this.status('연결 중…'); },
+    progress(got, total, speed) {
+      prog.hidden = false;
+      if (total) { bar.classList.remove('indet'); fill.style.width = Math.min(100, got / total * 100).toFixed(1) + '%'; }
+      else bar.classList.add('indet');
+      this.status(`${fmtBytes(got)}${total ? ' / ' + fmtBytes(total) : ''} · ${fmtBytes(speed)}/s`);
+    },
+    segs(done, total, bytes) {
+      prog.hidden = false; bar.classList.remove('indet'); fill.style.width = (done / total * 100).toFixed(1) + '%';
+      this.status(`조각 ${done}/${total} · ${fmtBytes(bytes)}`);
+    },
+    done(text) { bar.classList.remove('indet'); fill.style.width = '100%'; this.status(text, 'ok'); this.setBtn('다시 받기', 'primary'); },
+    fail(text, fallbackUrl) {
+      bar.classList.remove('indet'); prog.hidden = true; this.status(text, 'err'); this.setBtn('다시 시도', 'primary');
+      if (fallbackUrl && !$('.fallback', card)) {
+        const d = document.createElement('div'); d.className = 'vstat fallback';
+        d.innerHTML = `원본 서버가 CORS를 허용하지 않으면 앱에서 저장할 수 없습니다. <a href="${esc(fallbackUrl)}" target="_blank" rel="noopener noreferrer">새 탭에서 열기</a> 후 우클릭 → 다른 이름으로 저장하세요.`;
+        $('.vact', card).before(d);
+      }
+    }
+  };
+}
+
+function memorySink(mime) {
+  const chunks = []; let size = 0;
+  return { async write(c) { chunks.push(c); size += c.length; }, async close() { return new Blob(chunks, { type: mime }); }, async abort() { chunks.length = 0; }, get size() { return size; } };
+}
+async function diskSink(name) {
+  const handle = await window.showSaveFilePicker({ suggestedName: name });
+  const w = await handle.createWritable();
+  return { write: c => w.write(c), close: async () => { await w.close(); return null; }, abort: () => w.abort().catch(() => {}) };
+}
+function saveBlob(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
+}
+
+async function startDownload(id) {
+  const v = state.videos.find(x => x.id === id); if (!v) return;
+  if (downloads.has(id)) { downloads.get(id).ctrl.abort(); return; }   // 진행 중이면 취소
+  if (v.type !== 'file' && v.type !== 'hls') return;
+  const ui = cardUi(id); const ctrl = new AbortController();
+  downloads.set(id, { ctrl, ui });
+  ui.start();
+  const name = baseName(v) + '.' + extFor(v);
+  const useDisk = settings.disk && hasDiskApi;
+  let sink;
+  try {
+    sink = useDisk ? await diskSink(name) : memorySink(MIME[extFor(v)] || 'application/octet-stream');
+  } catch (e) { downloads.delete(id); ui.fail(e.name === 'AbortError' ? '저장 위치 선택이 취소되었습니다' : '파일을 만들 수 없습니다: ' + e.message); return; }
+
+  const fetcher = makeFetcher(FILE_ORDER, msg => ui.status(msg));
+  try {
+    let info;
+    if (v.type === 'hls') info = await downloadHls(v.url, sink, ui, ctrl.signal, fetcher);
+    else info = await downloadFile(v.url, sink, ui, ctrl.signal, fetcher);
+    const blob = await sink.close();
+    if (blob) saveBlob(blob, name);
+    ui.done(`완료 · ${fmtBytes(info.bytes)} · ${useDisk ? '디스크에 저장됨' : '다운로드 폴더로 저장됨'}${fetcher.via ? ' (' + fetcher.via + ')' : ''}${info.note ? ' · ' + info.note : ''}`);
+    toast('다운로드 완료: ' + name);
+  } catch (e) {
+    await sink.abort?.();
+    if (ctrl.signal.aborted) ui.fail('취소되었습니다');
+    else ui.fail(e.details ? '가져오기 실패 — ' + e.details.join(' / ') : '실패: ' + (e.message || e), e.details ? v.url : null);
+  } finally { downloads.delete(id); }
+}
+const notHtml = res => !/text\/html|application\/json/i.test(res.headers.get('content-type') || '');
+
+async function downloadFile(url, sink, ui, signal, fetcher) {
+  const { res } = await fetcher.get(url, signal, notHtml);
+  const total = +res.headers.get('content-length') || 0;
+  if (!res.body) { const buf = new Uint8Array(await res.arrayBuffer()); await sink.write(buf); return { bytes: buf.length }; }
+  const reader = res.body.getReader(); let got = 0, last = 0; const t0 = performance.now();
+  for (;;) {
+    const { done, value } = await reader.read(); if (done) break;
+    await sink.write(value); got += value.length;
+    const now = performance.now();
+    if (now - last > 200) { last = now; ui.progress(got, total, got / Math.max(0.001, (now - t0) / 1000)); }
+  }
+  if (!got) throw new Error('빈 응답을 받았습니다');
+  return { bytes: got };
+}
+
+async function downloadHls(url, sink, ui, signal, fetcher) {
+  const getText = async u => (await fetcher.get(u, signal)).res.text();
+  ui.status('재생목록 분석 중…');
+  let text = await getText(url), base = url;
+  if (!/^#EXTM3U/m.test(text)) throw new Error('올바른 HLS 재생목록이 아닙니다');
+  if (/#EXT-X-STREAM-INF/.test(text)) {
+    const lines = text.split(/\r?\n/); let best = null;
+    lines.forEach((l, i) => {
+      if (!l.startsWith('#EXT-X-STREAM-INF')) return;
+      const bw = +(/BANDWIDTH=(\d+)/.exec(l)?.[1] || 0), reso = /RESOLUTION=(\d+x\d+)/.exec(l)?.[1];
+      let j = i + 1; while (j < lines.length && (!lines[j].trim() || lines[j].startsWith('#'))) j++;
+      if (lines[j] && (!best || bw > best.bw)) best = { bw, reso, uri: lines[j].trim() };
+    });
+    if (!best) throw new Error('재생할 수 있는 화질을 찾지 못했습니다');
+    base = new URL(best.uri, url).href; ui.status('최고 화질 선택' + (best.reso ? ' (' + best.reso + ')' : '') + '…');
+    text = await getText(base);
+  }
+  if (/#EXT-X-KEY:(?![^\r\n]*METHOD=NONE)/.test(text)) throw new Error('암호화(AES/DRM)된 스트림은 지원하지 않습니다');
+  if (!/#EXT-X-ENDLIST/.test(text)) throw new Error('라이브 스트림은 지원하지 않습니다');
+  const mapUri = /#EXT-X-MAP:[^\r\n]*URI="([^"]+)"/.exec(text)?.[1];
+  const segs = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#')).map(l => new URL(l, base).href);
+  if (!segs.length) throw new Error('받을 조각이 없습니다');
+
+  const getSeg = async u => {
+    let err;
+    for (let k = 0; k < 3; k++) {
+      try { return new Uint8Array(await (await fetcher.get(u, signal)).res.arrayBuffer()); }
+      catch (e) { err = e; if (signal.aborted) throw e; await sleep(400 * (k + 1)); }
+    }
+    throw err;
+  };
+  let bytes = 0, done = 0;
+  if (mapUri) { const b = await getSeg(new URL(mapUri, base).href); await sink.write(b); bytes += b.length; }
+  const q = []; let next = 0; const WIN = 4;
+  for (let i = 0; i < segs.length; i++) {
+    while (q.length < WIN && next < segs.length) { const p = getSeg(segs[next++]); p.catch(() => {}); q.push(p); }
+    const b = await q.shift(); await sink.write(b); bytes += b.length; done++;
+    ui.segs(done, segs.length, bytes);
+  }
+  return { bytes, note: mapUri ? 'fMP4 스트림 — 확장자를 .mp4로 바꿔 사용하세요' : '' };
+}
+function cancelAllDownloadsOnNav() { /* 다운로드는 페이지 이동과 무관하게 계속 진행 */ }
+
+/* =====================================================================
+ * 이벤트 연결
+ * ===================================================================== */
+$('#heroForm').addEventListener('submit', e => { e.preventDefault(); openTarget($('#heroUrl').value); });
+$('#barForm').addEventListener('submit', e => { e.preventDefault(); openTarget($('#barUrl').value); });
+$('#recent').addEventListener('click', e => { const b = e.target.closest('[data-url]'); if (b) openTarget(b.dataset.url); });
+$('#brandBtn').addEventListener('click', () => { pageCtrl?.abort(); setBusy(false); setView('home'); $('#heroUrl').focus(); });
+$('#back').addEventListener('click', () => { if (state.idx > 0) { state.idx--; updateNav(); openTarget(state.hist[state.idx], { push: false }); } });
+$('#fwd').addEventListener('click', () => { if (state.idx < state.hist.length - 1) { state.idx++; updateNav(); openTarget(state.hist[state.idx], { push: false }); } });
+$('#reload').addEventListener('click', () => state.url && openTarget(state.url, { push: false }));
+$('#openorig').addEventListener('click', () => { const u = $('#openorig').dataset.href; if (u) window.open(u, '_blank', 'noopener,noreferrer'); });
+$('#busyCancel').addEventListener('click', () => { pageCtrl?.abort(); setBusy(false); if (document.body.dataset.view === 'home' || !state.url) setView('home'); });
+$('#errRetry').addEventListener('click', () => openTarget(state.url));
+$('#errSettings').addEventListener('click', () => openSettings());
+$$('#tabs button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+$('#barUrl').addEventListener('focus', e => e.target.select());
+
+$('#addForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const url = normalizeUrl($('#addUrl').value); if (!url) { toast('올바른 동영상 주소를 입력해 주세요'); return; }
+  if (state.videos.some(v => v.url === url)) { focusCard(state.videos.find(v => v.url === url).id); return; }
+  state.videos.push({ id: 'v' + state.videos.length, url, type: classify(url), source: '직접 추가', poster: '' });
+  $('#addUrl').value = ''; renderSide(); focusCard(state.videos[state.videos.length - 1].id);
+});
+
+$('#vlist').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const id = b.closest('.vcard').dataset.id; const v = state.videos.find(x => x.id === id); if (!v) return;
+  if (b.dataset.act === 'dl') startDownload(id);
+  else if (b.dataset.act === 'copy') copyText(v.url);
+  else if (b.dataset.act === 'preview') preview(v);
+});
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); toast('링크를 복사했습니다'); }
+  catch { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); toast('링크를 복사했습니다'); } catch { toast('복사에 실패했습니다'); } ta.remove(); }
+}
+function preview(v) {
+  const vid = $('#pvVideo');
+  if (v.type === 'hls' && !vid.canPlayType('application/vnd.apple.mpegurl')) { toast('이 브라우저는 HLS 미리보기를 지원하지 않습니다 (다운로드는 가능)'); return; }
+  $('#pvTitle').textContent = baseName(v);
+  vid.src = v.url; $('#pv').showModal(); vid.play().catch(() => {});
+}
+function closePreview() { const vid = $('#pvVideo'); vid.pause(); vid.removeAttribute('src'); vid.load(); }
+$('#pv').addEventListener('close', closePreview);
+$('#pvClose').addEventListener('click', () => $('#pv').close());
+$('#pv').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+$('#pvVideo').addEventListener('error', () => { if ($('#pv').open) toast('미리보기를 재생할 수 없습니다 (서버가 외부 재생을 막았거나 지원하지 않는 형식)'); });
+
+/* 설정 */
+function openSettings() {
+  $$('input[name=level]').forEach(r => r.checked = r.value === settings.level);
+  $('#optDisk').checked = settings.disk && hasDiskApi; $('#optDisk').disabled = !hasDiskApi;
+  if (!hasDiskApi) $('#diskHint').textContent = '이 브라우저는 디스크 직접 저장을 지원하지 않습니다 (Chrome · Edge에서 사용 가능). 메모리를 거쳐 저장합니다.';
+  $('#optProxy').value = settings.proxy;
+  $('#settings').showModal();
+}
+$('#settingsBtn').addEventListener('click', openSettings);
+$('#settingsClose').addEventListener('click', () => $('#settings').close());
+$('#settings').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+$('#settingsSave').addEventListener('click', () => {
+  const prevLevel = settings.level;
+  settings.level = $('input[name=level]:checked')?.value || 'standard';
+  settings.disk = $('#optDisk').checked; settings.proxy = $('#optProxy').value.trim();
+  saveSettings(); $('#settings').close(); toast('설정을 저장했습니다');
+  if (prevLevel !== settings.level && state.url && document.body.dataset.view === 'viewer') openTarget(state.url, { push: false });
+});
+$('#clearHist').addEventListener('click', () => { store.set('bb.recent', []); renderRecent(); toast('방문 기록을 지웠습니다'); });
+
+/* 시작 */
+const initial = new URLSearchParams(location.search).get('url') || (/^#https?:/i.test(location.hash) ? decodeURIComponent(location.hash.slice(1)) : '');
+setView('home'); updateNav();
+if (initial) openTarget(initial);
+})();
+</script>
+</body>
+</html>
